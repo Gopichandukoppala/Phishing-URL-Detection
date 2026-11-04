@@ -1,8 +1,9 @@
 """Phishing URL prediction API.
 
-Loads the trained SVM pickle and runs the original 30-feature extractor
-on a submitted URL. Java cannot load a scikit-learn pickle, so this
-service is Python by necessity.
+Loads the trained Random Forest pickle (a dict: {"model": ..., "features": [...]})
+and runs the 30-feature extractor on a submitted URL. The model was trained
+with label 1 = phishing, 0 = legitimate, on the feature subset stored in the
+pickle (Links_pointing_to_page is dropped).
 """
 
 from __future__ import annotations
@@ -10,12 +11,12 @@ from __future__ import annotations
 import ipaddress
 import math
 import os
+import pickle
 import socket
 from typing import Any
 from urllib.parse import urlparse
 
 import pandas as pd
-import pickle
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -23,7 +24,8 @@ from pydantic import BaseModel, Field
 from feature_extraction import FEATURE_NAMES, extract_features
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(ROOT, "models", "SVMClassifier.pickle.dat")
+MODEL_PATH = os.path.join(ROOT, "models", "RandomForest.pickle.dat")
+DATASET_PATH = os.path.abspath(os.path.join(ROOT, "..", "ml", "dataset.csv"))
 
 FEATURE_META: dict[str, str] = {
     "having_IPhaving_IP_Address": "Uses an IP address instead of a domain",
@@ -58,7 +60,7 @@ FEATURE_META: dict[str, str] = {
     "Statistical_report": "Appears on a phishing report list",
 }
 
-# Trained labels: original Result -1 (phishing) -> 0, Result 1 (legitimate) -> 1
+# API contract kept for the frontend: prediction 1 = legitimate, 0 = phishing.
 VERDICT = {0: "phishing", 1: "legitimate"}
 
 
@@ -91,8 +93,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ---------------------------------------------------------------- model loading
 with open(MODEL_PATH, "rb") as handle:
-    MODEL = pickle.load(handle)
+    _loaded = pickle.load(handle)
+
+if isinstance(_loaded, dict):
+    MODEL = _loaded["model"]
+    MODEL_FEATURES: list[str] = list(_loaded["features"])
+else:  # older pickles that store the bare estimator
+    MODEL = _loaded
+    MODEL_FEATURES = list(getattr(_loaded, "feature_names_in_", FEATURE_NAMES))
+
+# Same alignment as the notebook (cell 99): a feature value never seen in
+# training is replaced by that feature's most common training value.
+ALLOWED: dict[str, set] = {}
+MODE: dict[str, int] = {}
+if os.path.exists(DATASET_PATH):
+    _df = pd.read_csv(DATASET_PATH)
+    for _col in MODEL_FEATURES:
+        if _col in _df.columns:
+            ALLOWED[_col] = set(_df[_col].unique())
+            MODE[_col] = int(_df[_col].mode()[0])
+
+
+def align_to_training(values: list[int]) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for name, v in zip(FEATURE_NAMES, values):
+        v = int(v)
+        if name in ALLOWED and v not in ALLOWED[name]:
+            v = MODE[name]
+        out[name] = v
+    return out
 
 
 def signal_name(value: int) -> str:
@@ -182,7 +213,11 @@ def normalize_url(raw: str) -> str:
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
-    return {"ok": True, "model": "SVM linear", "features": len(FEATURE_NAMES)}
+    return {
+        "ok": True,
+        "model": type(MODEL).__name__,
+        "features": len(MODEL_FEATURES),
+    }
 
 
 @app.post("/api/predict", response_model=PredictResponse)
@@ -192,29 +227,38 @@ def predict(body: PredictRequest) -> PredictResponse:
     if len(values) != len(FEATURE_NAMES):
         raise HTTPException(status_code=500, detail="Feature extractor returned an unexpected vector.")
 
-    frame = pd.DataFrame([values], columns=FEATURE_NAMES)
-    prediction = int(MODEL.predict(frame)[0])
-    score = float(MODEL.decision_function(frame)[0])
-    probability_legitimate = 1.0 / (1.0 + math.exp(-score))
-    confidence = probability_legitimate if prediction == 1 else 1.0 - probability_legitimate
+    aligned = align_to_training(values)
+    # Select only the columns the model was trained on, in training order.
+    frame = pd.DataFrame([aligned], columns=FEATURE_NAMES)[MODEL_FEATURES]
+
+    # Model label: 1 = phishing, 0 = legitimate
+    p_phish = float(MODEL.predict_proba(frame)[0, 1])
+    p_legit = 1.0 - p_phish
+
+    prediction = 0 if p_phish >= 0.5 else 1  # API contract: 1 = legitimate
+    confidence = max(p_phish, p_legit)
+
+    eps = 1e-6  # avoid log(0)
+    pl = min(max(p_legit, eps), 1 - eps)
+    score = math.log(pl / (1 - pl))  # positive => legitimate
 
     features = [
         FeatureRow(
             key=name,
             label=FEATURE_META.get(name, name),
-            value=int(value),
-            signal=signal_name(int(value)),
+            value=aligned[name],
+            signal=signal_name(aligned[name]),
         )
-        for name, value in zip(FEATURE_NAMES, values)
+        for name in FEATURE_NAMES
     ]
 
     return PredictResponse(
         url=body.url.strip(),
         normalized_url=normalized,
         prediction=prediction,
-        verdict=VERDICT.get(prediction, "unknown"),
+        verdict=VERDICT[prediction],
         decision_score=round(score, 4),
-        confidence=round(float(confidence), 4),
+        confidence=round(confidence, 4),
         features=features,
     )
 

@@ -1,88 +1,153 @@
+
 # Phishing URL Detector
 
-Web app for the phishing-URL machine learning project. Paste a URL, extract the original 30 features, and classify the page with the saved linear SVM.
+A machine learning-based web application that detects phishing websites by analyzing URL, domain, HTTPS, webpage content, and reputation-based features.
 
-The UI is **React**. The API is **Python (FastAPI)** because `SVMClassifier.pickle.dat` is a scikit-learn pickle (Java cannot load it).
+## Tech Stack
 
-## Where the code is
+- **Frontend:** React, TypeScript, Vite, CSS
+- **Backend:** Python, FastAPI
+- **Machine Learning:** Scikit-learn, Random Forest Classifier
+- **Data Processing:** Pandas, NumPy, BeautifulSoup
+- **External Services:** RDAP, Tranco, OpenPhish, URLhaus, Google Custom Search, OpenPageRank
 
-| Path | What it is |
-|---|---|
-| `frontend/src/App.tsx` | Main React UI (form, verdict, feature grid) |
-| `frontend/src/index.css` | Colors, fonts, page background |
-| `frontend/index.html` | HTML shell |
-| `backend/app.py` | FastAPI: URL checks, SVM predict, `/api/predict` |
-| `backend/feature_extraction.py` | Your original 30-feature extractor |
-| `backend/models/SVMClassifier.pickle.dat` | Trained linear SVM |
-| `ml/Phishing_URL_Detection_ML.ipynb` | Training notebook |
-| `ml/dataset.csv` | Training data |
-| `run.sh` | Starts API + Vite together for local work |
+## Project Structure
 
-The UI calls `POST /api/predict` with `{ "url": "..." }`. In development, Vite (port **43123**) proxies `/api` to FastAPI (port **43124**).
+```text
+Phishing-URL-Detector/
+│
+├── backend/
+│   ├── models/
+│   │   └── RandomForest.pickle.dat
+│   ├── app.py
+│   ├── feature_extraction.py
+│   └── requirements.txt
+│
+├── frontend/
+│   ├── public/
+│   ├── src/
+│   │   ├── App.tsx
+│   │   ├── index.css
+│   │   ├── main.tsx
+│   │   └── types.ts
+│   ├── index.html
+│   ├── package.json
+│   └── vite.config.ts
+│
+├── ml/
+│   ├── dataset.csv
+│   └── Phishing_URL_Detection_ML.ipynb
+│
+└── README.md
+```
 
-## Run locally
+## Features
 
-You need Python 3.11+ and Node.js 20+.
+- URL-based phishing detection.
+- Extraction of 30 URL and webpage features.
+- Random Forest machine learning classification.
+- Website and SSL certificate analysis.
+- Domain age and DNS verification.
+- Detection using external phishing feeds.
+- Feature-wise prediction details.
+- REST API using FastAPI.
+
+## Machine Learning
+
+The project compares multiple algorithms, including:
+
+- Random Forest
+- Decision Tree
+- Logistic Regression
+- XGBoost
+- Support Vector Machine
+- Neural Network
+
+The deployed model is a **Random Forest Classifier** trained using a stratified 80:20 train-test split.
+
+### Random Forest Performance
+
+| Metric | Score |
+|---|---:|
+| Accuracy | 93.08% |
+| Precision | 94.25% |
+| Recall | 92.22% |
+| F1 Score | 93.22% |
+| ROC-AUC | 97.93% |
+
+The extractor calculates 30 features. The saved model uses 29 features, excluding `Links_pointing_to_page`.
+
+### Prediction Labels
+
+- `1` → Phishing (internal model class)
+- `0` → Legitimate (internal model class)
+
+The API converts these into:
+- `phishing`
+- `legitimate`
+
+A phishing probability of 0.5 or higher produces a phishing verdict.
+
+## Installation & Execution
+
+### 1. Clone Repository
 
 ```bash
-# Terminal 1 — API
-cd backend
-python3 -m pip install -r requirements.txt
-python3 -m uvicorn app:app --host 0.0.0.0 --port 43124
+git clone <repository-url>
+cd Phishing-URL-Detector
+```
 
-# Terminal 2 — UI
+### 2. Start Backend
+
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn app:app --host 0.0.0.0 --port 8000
+```
+
+### 3. Start Frontend
+
+Open another terminal:
+
+```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-Or from the repo root: `./run.sh`
+### 4. Open Application
 
-Open http://127.0.0.1:43123
+Open the frontend URL displayed by Vite in your terminal.
 
-## Deploy (one server)
+Backend API documentation:
 
-Build the React app, then let FastAPI serve the files from `frontend/dist` plus `/api`.
-
-```bash
-cd frontend
-npm install
-npm run build
-
-cd ../backend
-python3 -m pip install -r requirements.txt
-python3 -m uvicorn app:app --host 0.0.0.0 --port 8000
+```text
+http://127.0.0.1:8000/docs
 ```
 
-Open http://YOUR_SERVER:8000
+## API Endpoints
 
-The host must allow **outbound HTTP/HTTPS** so the extractor can download the submitted page.
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/api/health` | Check API status |
+| POST | `/api/predict` | Predict URL classification |
 
-### Docker
+### Prediction Request
 
-From the repo root:
-
-```bash
-docker build -t phishing-url-detector .
-docker run --rm -p 8000:8000 phishing-url-detector
+```json
+{
+  "url": "https://example.com"
+}
 ```
 
-Then open http://127.0.0.1:8000
+## Important Notes
 
-### Render / Railway / Fly
+- The backend requires the trained Random Forest pickle file.
+- The dataset is used for aligning extracted features with training values.
+- Some reputation features depend on external services and API credentials.
+- The application requires internet access to inspect public websites.
+- Predictions are machine learning estimates, not guarantees of website safety.
 
-1. Connect this Git repository.
-2. Use the Docker deploy, **or**:
-   - **Build:** `cd frontend && npm ci && npm run build`
-   - **Start:** `cd backend && uvicorn app:app --host 0.0.0.0 --port $PORT`
-3. Set the start command to use `$PORT` (these hosts inject it).
+## Disclaimer
 
-Do not put the pickle file or the API on a static-only host (GitHub Pages, plain Netlify) unless you still run Python somewhere else. The model has to execute on a server.
-
-## Labels
-
-- original `Result = -1` → class `0` → phishing
-- original `Result = 1` → class `1` → legitimate
-- feature values: `1` legitimate, `0` suspicious, `-1` phishing
-
-Domain age, WHOIS, PageRank, Google Index, and similar extractor fields are still placeholders.
+This project is developed for educational and research purposes. Always verify suspicious websites using additional security tools before interacting with them.
