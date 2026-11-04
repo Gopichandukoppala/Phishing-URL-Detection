@@ -78,7 +78,7 @@ function FeatureGrid({ features }: { features: FeatureRow[] }) {
             30 extracted features
           </p>
           <h2 className="font-display mt-1 text-2xl text-ink">
-            What the SVM actually saw
+            What the Random Forest actually saw
           </h2>
         </div>
         <p className="text-sm text-muted">
@@ -124,7 +124,7 @@ function ResultCard({ result }: { result: PredictResponse }) {
           {isSafe ? 'Looks legitimate' : 'Likely phishing'}
         </h2>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-ink/80">
-          Linear SVM trained on the UCI phishing-website features. Class{' '}
+          Random Forest trained on the UCI phishing-website features. Class{' '}
           <span className="font-semibold">0</span> is phishing, class{' '}
           <span className="font-semibold">1</span> is legitimate.
         </p>
@@ -210,7 +210,7 @@ export default function App() {
             </h1>
             <p className="mt-4 max-w-xl text-base leading-7 text-muted">
               Paste a URL. The app extracts the 30 page and address features
-              from your URL, then classifies it with the saved linear SVM.
+              from your URL, then classifies it with the saved Random Forest.
             </p>
           </div>
           <p className="max-w-xs text-sm leading-6 text-muted">
@@ -265,7 +265,7 @@ export default function App() {
           <div className="mt-8 rounded-2xl border border-dashed border-rule bg-white/50 px-5 py-6">
             <p className="text-sm font-medium text-ink">Fetching the page and extracting features</p>
             <p className="mt-1 text-sm text-muted">
-              This can take up to about 15 seconds while the backend downloads the site, checks TLS, and scores the SVM.
+              This can take up to about 15 seconds while the backend downloads the site, checks TLS, and scores the Random Forest.
             </p>
           </div>
         )}
@@ -302,7 +302,7 @@ export default function App() {
             <p className="font-display mt-2 text-2xl">Phishing URL Detection</p>
             <p className="mt-3 max-w-xs text-sm leading-6 text-paper/65">
               A machine learning demo that extracts 30 URL features and classifies
-              a page with a linear SVM.
+              a page with a Random Forest.
             </p>
           </div>
           <div>
@@ -310,7 +310,7 @@ export default function App() {
             <ul className="mt-3 space-y-2 text-sm text-paper/65">
               <li>React frontend</li>
               <li>Python FastAPI backend</li>
-              <li>scikit-learn linear SVM</li>
+              <li>scikit-learn Random Forest</li>
               <li>UCI phishing website features</li>
             </ul>
           </div>
@@ -319,7 +319,7 @@ export default function App() {
             <ol className="mt-3 list-decimal space-y-2 pl-4 text-sm leading-6 text-paper/65">
               <li>Paste a public http(s) URL.</li>
               <li>The server extracts the 30 training features.</li>
-              <li>The saved SVM returns phishing (0) or legitimate (1).</li>
+              <li>The saved Random Forest returns phishing (0) or legitimate (1).</li>
             </ol>
           </div>
         </div>
